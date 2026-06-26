@@ -7,7 +7,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, func
+    BigInteger, Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, func
 )
 from sqlalchemy.orm import relationship
 
@@ -87,7 +87,7 @@ class ExecutionRecord(Base):
     started_at = Column(DateTime, default=func.now(), comment="开始时间")
     finished_at = Column(DateTime, nullable=True, comment="结束时间")
     duration_seconds = Column(Integer, nullable=True, comment="耗时（秒）")
-    artifact_size = Column(Integer, nullable=True, comment="产物大小（字节）")
+    artifact_size = Column(BigInteger, nullable=True, comment="产物大小（字节）")
     remote_path = Column(String(500), nullable=True, comment="远端产物路径")
     log = Column(Text, default="", comment="执行日志")
     trigger_source = Column(Enum(TriggerSource), default=TriggerSource.SCHEDULED, comment="触发来源")

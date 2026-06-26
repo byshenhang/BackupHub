@@ -31,11 +31,19 @@ pip install -r requirements.txt
 # 复制并编辑配置文件
 cp .env.example .env
 vim .env
+```
 
-# 至少需要配置：
-# - SECRET_KEY（加密密钥）
-# - GITLAB_URL
-# - GITLAB_TOKEN
+**必须配置**：
+```ini
+LOGIN_PASSWORD=your-secure-password
+SECRET_KEY=<生成的 Fernet 密钥>
+GITLAB_URL=https://gitlab.example.com
+GITLAB_TOKEN=glpat-xxxx
+```
+
+生成密钥：
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
 ### 3. 初始化数据库
@@ -47,8 +55,11 @@ python -m scripts.init_db
 ### 4. 安装系统服务
 
 ```bash
-# 复制服务文件
+# 复制服务文件（根据实际路径修改）
 sudo cp deploy/backup-hub.service /etc/systemd/system/
+
+# 编辑服务文件，确认路径正确
+sudo vim /etc/systemd/system/backup-hub.service
 
 # 创建服务用户（可选）
 sudo useradd -r -s /sbin/nologin backup-hub
@@ -67,7 +78,7 @@ sudo journalctl -u backup-hub -f
 
 ### 5. 访问
 
-浏览器打开 http://your-server:8000
+浏览器打开 http://your-server:8010
 
 ## Windows 部署（NSSM）
 
@@ -116,10 +127,16 @@ nssm set BackupHub Start SERVICE_AUTO_START
 nssm start BackupHub
 ```
 
-## 生成加密密钥
+## systemd 服务说明
 
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
+`backup-hub.service` 关键配置：
 
-将生成的密钥填入 `.env` 文件的 `SECRET_KEY` 字段。
+| 配置 | 说明 |
+|------|------|
+| `Restart=always` | 进程退出后自动重启 |
+| `RestartSec=5` | 重启间隔 5 秒 |
+| `StartLimitIntervalSec=0` | 不限制重启次数 |
+| `NoNewPrivileges=true` | 安全加固 |
+| `ProtectSystem=strict` | 只读文件系统 |
+
+> **注意**：systemd 的 `EnvironmentFile` 不支持 `#` 注释行。如果使用 `EnvironmentFile` 指向 `.env` 文件，请确保 `.env` 中没有注释行，或将注释行删除。

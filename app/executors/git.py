@@ -79,7 +79,7 @@ class GitExecutor(BaseExecutor):
 
         # 4. 打包压缩
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        archive_name = f"gitlab_backup_{timestamp}.tar.gz"
+        archive_name = f"gitlab_backup_v{timestamp}.tar.gz"
         archive_path = work_dir / archive_name
 
         self.logger.info(f"正在打包压缩为 {archive_name}...")

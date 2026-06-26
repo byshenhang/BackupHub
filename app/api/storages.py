@@ -10,11 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.auth import require_auth
 from app.core.crypto import decrypt, encrypt
 from app.db.session import get_db
 from app.db.models import StorageTarget, StorageType
 
-router = APIRouter(prefix="/api/storages", tags=["storages"])
+router = APIRouter(prefix="/api/storages", tags=["storages"], dependencies=[Depends(require_auth)])
 
 
 # --- Pydantic 模型 ---

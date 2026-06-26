@@ -26,6 +26,7 @@ class LocalStorage(BaseStorage):
 
         target_dir.mkdir(parents=True, exist_ok=True)
         target_path = target_dir / remote_key
+        target_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.logger.info(f"上传到本地目录：{target_path}")
         shutil.copy2(local_path, target_path)

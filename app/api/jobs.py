@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.auth import require_auth
 from app.db.session import get_db
 from app.db.models import BackupJob, JobType
 from app.core.scheduler import (
@@ -20,7 +21,7 @@ from app.core.scheduler import (
     trigger_job_now,
 )
 
-router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+router = APIRouter(prefix="/api/jobs", tags=["jobs"], dependencies=[Depends(require_auth)])
 
 # 线程池用于异步执行手动触发的备份任务
 _executor = ThreadPoolExecutor(max_workers=4)

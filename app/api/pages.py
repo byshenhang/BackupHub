@@ -10,10 +10,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from app.api.auth import require_auth
 from app.db.session import get_db
-from app.db.models import BackupJob, ExecutionRecord, StorageTarget
+from app.db.models import BackupJob, ExecutionRecord, RunStatus, StorageTarget
 
-router = APIRouter(tags=["pages"])
+router = APIRouter(tags=["pages"], dependencies=[Depends(require_auth)])
 
 templates = Jinja2Templates(directory="app/web/templates")
 
@@ -25,10 +26,10 @@ def index(request: Request, db: Session = Depends(get_db)):
     enabled_count = db.query(BackupJob).filter(BackupJob.enabled == True).count()
     runs_count = db.query(ExecutionRecord).count()
     success_count = db.query(ExecutionRecord).filter(
-        ExecutionRecord.status == "success"
+        ExecutionRecord.status == RunStatus.SUCCESS
     ).count()
     failed_count = db.query(ExecutionRecord).filter(
-        ExecutionRecord.status == "failed"
+        ExecutionRecord.status == RunStatus.FAILED
     ).count()
     storages_count = db.query(StorageTarget).count()
 

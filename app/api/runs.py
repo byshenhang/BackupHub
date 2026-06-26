@@ -9,10 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.auth import require_auth
 from app.db.session import get_db
 from app.db.models import ExecutionRecord, RunStatus
 
-router = APIRouter(prefix="/api/runs", tags=["runs"])
+router = APIRouter(prefix="/api/runs", tags=["runs"], dependencies=[Depends(require_auth)])
 
 
 # --- Pydantic 模型 ---

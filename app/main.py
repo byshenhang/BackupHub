@@ -9,8 +9,8 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -94,24 +94,12 @@ static_dir = Path(__file__).parent / "web" / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-# 免登录白名单
-_PUBLIC_PATHS = {"/login", "/logout", "/api/health", "/favicon.ico"}
-
-
-@app.middleware("http")
-async def auth_middleware(request: Request, call_next):
-    """登录检查中间件。未登录时跳转到 /login。"""
-    path = request.url.path
-    # 白名单路径、静态资源放行
-    if path in _PUBLIC_PATHS or path.startswith("/static"):
-        return await call_next(request)
-    # 检查 session
-    if not request.session.get("logged_in"):
-        if path.startswith("/api/"):
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"detail": "未登录"}, status_code=401)
-        return RedirectResponse("/login", status_code=303)
-    return await call_next(request)
+# 401 异常处理：页面请求重定向到登录页，API 请求返回 JSON
+@app.exception_handler(401)
+async def auth_exception_handler(request: Request, exc: HTTPException):
+    if request.url.path.startswith("/api/"):
+        return JSONResponse({"detail": "未登录"}, status_code=401)
+    return RedirectResponse("/login", status_code=303)
 
 
 # 注册路由
@@ -121,7 +109,7 @@ from app.api.runs import router as runs_router
 from app.api.storages import router as storages_router
 from app.api.pages import router as pages_router
 
-app.include_router(auth_router)
+app.include_router(auth_router)  # 登录/登出接口，无需认证
 app.include_router(jobs_router)
 app.include_router(runs_router)
 app.include_router(storages_router)
