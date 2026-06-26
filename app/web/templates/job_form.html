@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if job else '新建' }}任务 - Backup-Hub{% endblock %}
+{% block content %}
+<h2>{{ '编辑' if job else '新建' }}备份任务</h2>
+
+<div class="card" style="max-width: 700px;">
+    <form id="job-form" onsubmit="submitForm(event)">
+        <div class="form-group">
+            <label>任务名称</label>
+            <input type="text" name="name" required placeholder="如：GitLab 生产环境备份"
+                   value="{{ job.name if job else '' }}">
+        </div>
+
+        <div class="form-group">
+            <label>任务类型</label>
+            <select name="job_type" required>
+                <option value="git" {{ 'selected' if job and job.job_type.value == 'git' else '' }}>Git/GitLab 仓库备份</option>
+                <option value="file" {{ 'selected' if job and job.job_type.value == 'file' else '' }} disabled>文件目录备份（即将支持）</option>
+                <option value="database" {{ 'selected' if job and job.job_type.value == 'database' else '' }} disabled>数据库备份（即将支持）</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>调度周期（cron 表达式）</label>
+            <input type="text" name="cron_expression" required placeholder="0 2 * * *（每天凌晨 2 点）"
+                   value="{{ job.cron_expression if job else '0 2 * * *' }}">
+            <small style="color: #666;">格式：分 时 日 月 周。示例：0 2 * * * = 每天凌晨2点，*/30 * * * * = 每30分钟</small>
+        </div>
+
+        <div class="form-group">
+            <label>存储目标</label>
+            <select name="storage_target_id">
+                <option value="">-- 不上传（仅本地保留） --</option>
+                {% for s in storages %}
+                <option value="{{ s.id }}" {{ 'selected' if job and job.storage_target_id == s.id else '' }}>
+                    {{ s.name }}（{{ s.storage_type.value }}）
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>保留天数</label>
+            <input type="number" name="retention_days" min="1" max="365"
+                   value="{{ job.retention_days if job else 30 }}">
+        </div>
+
+        <div class="form-group">
+            <label>启用状态</label>
+            <select name="enabled">
+                <option value="true" {{ 'selected' if not job or job.enabled else '' }}>启用</option>
+                <option value="false" {{ 'selected' if job and not job.enabled else '' }}>停用</option>
+            </select>
+        </div>
+
+        <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+        <h3 style="margin-bottom: 16px;">Git 备份配置</h3>
+
+        <div class="form-group">
+            <label>GitLab URL（留空则使用环境变量中的默认值）</label>
+            <input type="text" name="gitlab_url" placeholder="https://gitlab.example.com"
+                   id="gitlab_url">
+        </div>
+
+        <div class="form-group">
+            <label>GitLab Token（API 调用需要，留空则使用环境变量默认值）</label>
+            <input type="password" name="gitlab_token" placeholder="glpat-xxxx"
+                   id="gitlab_token">
+        </div>
+
+        <div class="form-group">
+            <label>克隆认证方式</label>
+            <select name="auth_type" onchange="toggleAuthFields(this.value)">
+                <option value="token">HTTP Token（默认）</option>
+                <option value="ssh">SSH Key</option>
+            </select>
+            <small style="color: #666;">Token 模式用 HTTP URL + Token 克隆；SSH 模式用 SSH 私钥克隆</small>
+        </div>
+
+        <div id="ssh-key-section" style="display: none;">
+            <div class="form-group">
+                <label>SSH 私钥</label>
+                <textarea name="ssh_key" rows="8" placeholder="粘贴 SSH 私钥内容（-----BEGIN OPENSSH PRIVATE KEY----- ...）"
+                          style="font-family: monospace; font-size: 12px;"></textarea>
+                <small style="color: #666;">私钥将加密存储在数据库中。建议使用专用的部署密钥。</small>
+            </div>
+        </div>
+
+        <div style="margin-top: 24px; display: flex; gap: 12px;">
+            <button type="submit" class="btn btn-primary">{{ '保存修改' if job else '创建任务' }}</button>
+            <a href="/jobs" class="btn btn-outline">取消</a>
+        </div>
+    </form>
+</div>
+
+<script>
+function toggleAuthFields(type) {
+    document.getElementById('ssh-key-section').style.display = type === 'ssh' ? 'block' : 'none';
+}
+
+async function submitForm(e) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+
+    const data = {
+        name: formData.get('name'),
+        job_type: formData.get('job_type'),
+        cron_expression: formData.get('cron_expression'),
+        enabled: formData.get('enabled') === 'true',
+        retention_days: parseInt(formData.get('retention_days')) || 30,
+        storage_target_id: formData.get('storage_target_id') ? parseInt(formData.get('storage_target_id')) : null,
+        config: {}
+    };
+
+    // Git 配置
+    const gitlabUrl = formData.get('gitlab_url');
+    const gitlabToken = formData.get('gitlab_token');
+    const authType = formData.get('auth_type');
+    const sshKey = formData.get('ssh_key');
+    if (gitlabUrl) data.config.gitlab_url = gitlabUrl;
+    if (gitlabToken) data.config.gitlab_token = gitlabToken;
+    if (authType) data.config.auth_type = authType;
+    if (sshKey && authType === 'ssh') data.config.ssh_key = sshKey;
+
+    {% if job %}
+    // 编辑模式
+    const resp = await fetch('/api/jobs/{{ job.id }}', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    });
+    {% else %}
+    // 新建模式
+    const resp = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    });
+    {% endif %}
+
+    if (resp.ok) {
+        window.location.href = '/jobs';
+    } else {
+        const err = await resp.json();
+        alert('操作失败：' + (err.detail || JSON.stringify(err)));
+    }
+}
+</script>
+{% endblock %}

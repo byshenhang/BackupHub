@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}备份任务 - Backup-Hub{% endblock %}
+{% block content %}
+<div class="toolbar">
+    <h2>备份任务</h2>
+    <a href="/jobs/new" class="btn btn-primary">+ 新建任务</a>
+</div>
+
+<div class="card">
+    {% if jobs %}
+    <table>
+        <thead>
+            <tr>
+                <th>名称</th>
+                <th>类型</th>
+                <th>调度周期</th>
+                <th>状态</th>
+                <th>最近执行</th>
+                <th>下次执行</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in jobs %}
+            <tr>
+                <td><strong>{{ job.name }}</strong></td>
+                <td>{{ job.job_type.value }}</td>
+                <td><code>{{ job.cron_expression }}</code></td>
+                <td>
+                    <label class="toggle">
+                        <input type="checkbox" {% if job.enabled %}checked{% endif %}
+                               hx-patch="/api/jobs/{{ job.id }}/toggle"
+                               hx-swap="none"
+                               hx-confirm="确认{{ '停用' if job.enabled else '启用' }}此任务？">
+                        <span class="slider"></span>
+                    </label>
+                </td>
+                <td>
+                    {% if job.runs %}
+                        {% set last_run = job.runs[0] %}
+                        {% if last_run.status.value == 'success' %}
+                            <span class="badge badge-success">成功</span>
+                        {% elif last_run.status.value == 'failed' %}
+                            <span class="badge badge-failed">失败</span>
+                        {% else %}
+                            <span class="badge badge-running">运行中</span>
+                        {% endif %}
+                    {% else %}
+                        <span style="color:#999;">未执行过</span>
+                    {% endif %}
+                </td>
+                <td>-</td>
+                <td>
+                    <div class="actions">
+                        <button class="btn btn-success btn-sm"
+                                hx-post="/api/jobs/{{ job.id }}/run"
+                                hx-swap="none"
+                                hx-confirm="确认立即执行此任务？"
+                                hx-on::after-request="if(event.detail.successful) alert('已触发执行')">
+                            ▶ 执行
+                        </button>
+                        <a href="/jobs/{{ job.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
+                        <button class="btn btn-danger btn-sm"
+                                hx-delete="/api/jobs/{{ job.id }}"
+                                hx-confirm="确认删除此任务？所有执行记录也将被删除。"
+                                hx-swap="none"
+                                hx-on::after-request="if(event.detail.successful) location.reload()">
+                            删除
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+        <p>暂无备份任务</p>
+        <a href="/jobs/new" class="btn btn-primary" style="margin-top: 12px;">创建第一个任务</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

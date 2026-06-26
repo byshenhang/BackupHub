@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}执行历史 - Backup-Hub{% endblock %}
+{% block content %}
+<h2>执行历史</h2>
+
+<div class="card">
+    {% if runs %}
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>任务</th>
+                <th>状态</th>
+                <th>触发方式</th>
+                <th>开始时间</th>
+                <th>耗时</th>
+                <th>产物大小</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in runs %}
+            <tr>
+                <td>#{{ run.id }}</td>
+                <td>{{ run.job.name if run.job else '-' }}</td>
+                <td>
+                    {% if run.status.value == 'success' %}
+                        <span class="badge badge-success">成功</span>
+                    {% elif run.status.value == 'failed' %}
+                        <span class="badge badge-failed">失败</span>
+                    {% else %}
+                        <span class="badge badge-running">运行中</span>
+                    {% endif %}
+                </td>
+                <td>{{ run.trigger_source.value if run.trigger_source else '-' }}</td>
+                <td>{{ run.started_at.strftime('%Y-%m-%d %H:%M:%S') if run.started_at else '-' }}</td>
+                <td>{{ run.duration_seconds ~ '秒' if run.duration_seconds else '-' }}</td>
+                <td>
+                    {% if run.artifact_size %}
+                        {% if run.artifact_size > 1073741824 %}
+                            {{ '%.2f' | format(run.artifact_size / 1073741824) }} GB
+                        {% elif run.artifact_size > 1048576 %}
+                            {{ '%.2f' | format(run.artifact_size / 1048576) }} MB
+                        {% elif run.artifact_size > 1024 %}
+                            {{ '%.2f' | format(run.artifact_size / 1024) }} KB
+                        {% else %}
+                            {{ run.artifact_size }} B
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/runs/{{ run.id }}" class="btn btn-outline btn-sm">详情</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+        <p>暂无执行记录</p>
+        <p style="margin-top: 8px; font-size: 14px;">执行备份任务后，记录将显示在这里。</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

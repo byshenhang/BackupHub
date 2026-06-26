@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 - Backup-Hub{% endblock %}
+{% block content %}
+<h2>仪表盘</h2>
+
+<div class="stats">
+    <div class="stat-card">
+        <div class="number">{{ jobs_count }}</div>
+        <div class="label">备份任务</div>
+    </div>
+    <div class="stat-card">
+        <div class="number">{{ enabled_count }}</div>
+        <div class="label">已启用</div>
+    </div>
+    <div class="stat-card">
+        <div class="number">{{ runs_count }}</div>
+        <div class="label">总执行次数</div>
+    </div>
+    <div class="stat-card">
+        <div class="number" style="color: #28a745;">{{ success_count }}</div>
+        <div class="label">成功</div>
+    </div>
+    <div class="stat-card">
+        <div class="number" style="color: #dc3545;">{{ failed_count }}</div>
+        <div class="label">失败</div>
+    </div>
+    <div class="stat-card">
+        <div class="number">{{ storages_count }}</div>
+        <div class="label">存储目标</div>
+    </div>
+</div>
+
+<div class="card">
+    <h3 style="margin-bottom: 16px;">最近执行记录</h3>
+    {% if recent_runs %}
+    <table>
+        <thead>
+            <tr>
+                <th>任务</th>
+                <th>状态</th>
+                <th>触发方式</th>
+                <th>耗时</th>
+                <th>时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in recent_runs %}
+            <tr>
+                <td>{{ run.job.name if run.job else '-' }}</td>
+                <td>
+                    {% if run.status.value == 'success' %}
+                        <span class="badge badge-success">成功</span>
+                    {% elif run.status.value == 'failed' %}
+                        <span class="badge badge-failed">失败</span>
+                    {% else %}
+                        <span class="badge badge-running">运行中</span>
+                    {% endif %}
+                </td>
+                <td>{{ run.trigger_source.value if run.trigger_source else '-' }}</td>
+                <td>{{ run.duration_seconds ~ '秒' if run.duration_seconds else '-' }}</td>
+                <td>{{ run.created_at.strftime('%Y-%m-%d %H:%M') if run.created_at else '-' }}</td>
+                <td><a href="/runs/{{ run.id }}" class="btn btn-outline btn-sm">详情</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty">暂无执行记录</div>
+    {% endif %}
+</div>
+{% endblock %}

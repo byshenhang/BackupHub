@@ -1,0 +1,28 @@
+[Unit]
+Description=Backup-Hub Backup Management Service
+After=network.target
+
+[Service]
+Type=simple
+User=backup-hub
+Group=backup-hub
+WorkingDirectory=/opt/backup-hub
+ExecStart=/opt/backup-hub/venv/bin/python -m app.main
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+Environment=PATH=/opt/backup-hub/venv/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/opt/backup-hub/.env
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=backup-hub
+
+# 安全加固
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/backup-hub/data /opt/backup-hub/logs
+
+[Install]
+WantedBy=multi-user.target
