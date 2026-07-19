@@ -5,8 +5,8 @@
 ## 功能特性
 
 - **登录认证** — 密码登录，Session 会话管理
-- **Git/GitLab 备份** — 支持 HTTP Token 和 SSH Key 两种认证方式，镜像克隆 + 增量更新
-- **多存储目标** — 本地目录、阿里云 OSS、WebDAV（坚果云/Nextcloud 等）
+- **Git/GitLab 备份** — 支持 GitHub 私有单仓库和 GitLab 全量项目，镜像克隆 + 增量更新
+- **多存储目标** — 本地目录、阿里云 OSS、WebDAV（123 网盘/坚果云/Nextcloud 等）
 - **定时调度** — cron 表达式调度，支持手动触发，并发保护
 - **执行历史** — 完整的执行记录、耗时、产物大小、详细日志
 - **保留策略** — 按天数自动清理旧备份，先确认新备份成功再清理
@@ -44,8 +44,7 @@ cp .env.example .env
 # 登录密码（必填，否则无法登录）
 LOGIN_PASSWORD=your-password-here
 
-# GitLab 默认配置（可在 Web 界面按任务覆盖）
-GITLAB_URL=https://gitlab.example.com
+# GitLab Token（仅使用 GitLab 全量备份时需要；URL 在任务页面配置）
 GITLAB_TOKEN=glpat-xxxx
 
 # 端口（默认 8000，被占用可改为其他）
@@ -65,6 +64,55 @@ SESSION_SECRET=
 # 日志级别
 LOG_LEVEL=INFO
 ```
+
+### GitHub 私有仓库 Token
+
+推荐使用 GitHub Fine-grained personal access token。可从以下官方入口创建：
+
+- [创建 Fine-grained Token（已预填 Contents: read）](https://github.com/settings/personal-access-tokens/new?name=BackupHub&description=Read-only+repository+backup&contents=read)
+- [GitHub 官方 Token 管理文档](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+
+创建时按以下最小权限配置：
+
+1. `Resource owner` 选择仓库所有者 `byshenhang`。
+2. `Repository access` 选择 `Only select repositories`。
+3. 只选择 `super-agent-kernel`。
+4. `Repository permissions` 中将 `Contents` 设为 `Read-only`。
+5. 设置合理的过期时间并生成 Token。
+6. 登录 BackupHub，进入「应用设置」，保存 Token 后点击「测试仓库访问」。
+7. 在「备份任务」中创建 Git 任务，将仓库 URL 填写为 HTTPS 克隆地址。
+
+Token 等同密码，不要写入任务表单、README、日志或提交到 Git。BackupHub 通过临时 Git 配置传递 Token，镜像仓库的 remote URL 不保存 Token。
+网页保存的 Token 会加密写入数据库并立即生效，无需重启。`.env` 的 `GITHUB_TOKEN` 仅作为可选回退配置。
+
+如果权限测试提示无法连接 `github.com:443`，请先确认本机能访问 GitHub。原生运行可在 `.env` 配置 `HTTP_PROXY` 和 `HTTPS_PROXY`；Docker Desktop 容器应使用 `http://host.docker.internal:<代理端口>`，不能使用容器自身的 `127.0.0.1`。
+
+### 123 网盘 WebDAV
+
+在 123 网盘的 WebDAV 授权管理中创建一个具有“读写”权限的应用，使用该应用显示的账号和应用密码。配置格式：
+
+```ini
+WEBDAV_URL=https://webdav.123pan.cn/webdav/
+WEBDAV_USERNAME=123网盘生成的WebDAV账号
+WEBDAV_PASSWORD=123网盘生成的应用密码
+WEBDAV_REMOTE_PATH=/GithubSync/
+```
+
+然后在管理后台创建 `WebDAV` 存储目标，填入相同配置。服务地址必须是 WebDAV 端点，不能填写 123 网盘普通网页地址。测试备份会上传为：
+
+```text
+/GithubSync/super-agent-kernel_YYYYMMDD_HHMMSS.tar.gz
+```
+
+压缩包内是完整的裸镜像仓库 `super-agent-kernel.git/`，包含分支、标签和 Git 历史，可用于完整恢复。
+
+也可以直接从 `.env` 初始化或更新 WebDAV 存储目标：
+
+```bash
+python -m scripts.configure_webdav
+```
+
+脚本会将 WebDAV 凭证加密存入数据库。GitHub Token 在「应用设置」维护；仓库 URL、调度周期和存储目标在任务页面配置。先手动执行验证，成功后再启用定时调度。
 
 ### 3. 初始化数据库
 
@@ -107,7 +155,7 @@ python -m app.main
 | 凭证加密 | cryptography (Fernet) |
 | Git 操作 | git CLI + httpx |
 | OSS 上传 | oss2 |
-| WebDAV 上传 | webdavclient3 |
+| WebDAV 上传 | requests + WebDAV HTTP methods |
 
 ## 目录结构
 
@@ -125,7 +173,7 @@ backup-hub/
 │   │   ├── scheduler.py      # APScheduler 调度管理
 │   │   └── crypto.py         # 凭证加解密
 │   ├── db/                   # 数据库层
-│   │   ├── models.py         # ORM 模型（4 张表）
+│   │   ├── models.py         # ORM 模型（5 张表）
 │   │   └── session.py        # 引擎与会话
 │   ├── executors/            # 备份执行器（可插拔）
 │   │   ├── base.py           # 抽象接口
@@ -193,6 +241,32 @@ backup-hub/
 - **必须**配置 `LOGIN_PASSWORD` 和 `SECRET_KEY`
 - 日志自动轮转（10MB/文件，保留 5 个）
 - SQLite 文件在 `data/backup-hub.db`，定期备份
+
+## Docker Compose
+
+准备 `.env` 后构建并启动：
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f backup-hub
+```
+
+默认访问地址为 `http://localhost:8010`，可通过 `.env` 的 `BACKUP_HUB_PORT` 修改宿主机端口。容器内部固定监听 `8000`。
+
+首次使用 123 网盘 WebDAV 时，可以从 `.env` 初始化存储目标：
+
+```bash
+docker compose exec backup-hub python -m scripts.configure_webdav
+```
+
+SQLite 数据库、Git 镜像缓存和日志分别保存在 `backuphub-data`、`backuphub-logs` Docker 卷中。停止服务不会删除数据：
+
+```bash
+docker compose down
+```
+
+只有明确需要清空全部容器数据时才使用 `docker compose down -v`。
 
 ## 开发调试
 

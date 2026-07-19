@@ -73,3 +73,20 @@ class OSSStorage(BaseStorage):
 
         full_prefix = f"{config.get('prefix', 'backup-hub/')}{prefix}"
         return [obj.key for obj in oss2.ObjectIterator(bucket, prefix=full_prefix)]
+
+    def test_connection(self, config: dict) -> None:
+        try:
+            import oss2
+        except ImportError:
+            raise RuntimeError("oss2 未安装。")
+
+        auth = oss2.Auth(
+            config.get("access_key_id", ""),
+            config.get("access_key_secret", ""),
+        )
+        bucket = oss2.Bucket(
+            auth,
+            config.get("endpoint", ""),
+            config.get("bucket", ""),
+        )
+        bucket.get_bucket_info()

@@ -1,6 +1,6 @@
 """SQLAlchemy 数据模型定义。
 
-四张核心表：BackupJob、StorageTarget、ExecutionRecord、AlertChannel
+核心表：BackupJob、StorageTarget、ExecutionRecord、AppSetting、AlertChannel
 """
 
 import enum
@@ -96,6 +96,20 @@ class ExecutionRecord(Base):
 
     # 关系
     job = relationship("BackupJob", back_populates="runs")
+
+
+class AppSetting(Base):
+    """应用级加密设置。"""
+    __tablename__ = "app_settings"
+
+    key = Column(String(100), primary_key=True)
+    encrypted_value = Column(Text, nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=func.now(),
+        onupdate=func.now(),
+        comment="更新时间",
+    )
 
 
 class AlertChannel(Base):

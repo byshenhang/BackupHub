@@ -107,12 +107,14 @@ from app.api.auth import router as auth_router
 from app.api.jobs import router as jobs_router
 from app.api.runs import router as runs_router
 from app.api.storages import router as storages_router
+from app.api.settings import router as settings_router
 from app.api.pages import router as pages_router
 
 app.include_router(auth_router)  # 登录/登出接口，无需认证
 app.include_router(jobs_router)
 app.include_router(runs_router)
 app.include_router(storages_router)
+app.include_router(settings_router)
 app.include_router(pages_router)
 
 

@@ -6,7 +6,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_auth
@@ -19,6 +19,8 @@ router = APIRouter(prefix="/api/runs", tags=["runs"], dependencies=[Depends(requ
 # --- Pydantic 模型 ---
 
 class RunResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     job_id: int
     job_name: Optional[str] = None
@@ -31,10 +33,6 @@ class RunResponse(BaseModel):
     trigger_source: Optional[str]
     error_message: Optional[str]
     created_at: Optional[str]
-
-    class Config:
-        from_attributes = True
-
 
 class RunDetailResponse(RunResponse):
     log: Optional[str] = None

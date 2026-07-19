@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.pyc
+.env
+data
+logs
+tests
+deploy
+*.md
+test_*.py
+check_*.py

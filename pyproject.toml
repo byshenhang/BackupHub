@@ -20,7 +20,7 @@ dependencies = [
     "cryptography>=41.0.0",
     "oss2>=2.18.0",
     "python-multipart>=0.0.6",
-    "webdavclient3>=4.0.0",
+    "requests>=2.31.0",
     "itsdangerous>=2.1.0",
 ]
 
@@ -34,3 +34,6 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

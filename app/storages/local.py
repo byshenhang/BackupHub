@@ -20,9 +20,10 @@ class LocalStorage(BaseStorage):
         return "local"
 
     def upload(self, local_path: Path, remote_key: str, config: dict) -> str:
-        target_dir = Path(config.get("path", ""))
-        if not target_dir:
+        configured_path = str(config.get("path", "")).strip()
+        if not configured_path:
             raise ValueError("本地存储路径未配置。")
+        target_dir = Path(configured_path)
 
         target_dir.mkdir(parents=True, exist_ok=True)
         target_path = target_dir / remote_key
@@ -50,3 +51,13 @@ class LocalStorage(BaseStorage):
             str(f) for f in target_dir.iterdir()
             if f.is_file() and f.name.startswith(prefix)
         ]
+
+    def test_connection(self, config: dict) -> None:
+        configured_path = str(config.get("path", "")).strip()
+        if not configured_path:
+            raise ValueError("本地存储路径未配置。")
+        target_dir = Path(configured_path)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        probe = target_dir / ".backup-hub-write-test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()

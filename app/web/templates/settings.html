@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}应用设置 - Backup-Hub{% endblock %}
+{% block content %}
+<div class="toolbar">
+    <h2>应用设置</h2>
+</div>
+
+<div class="card" style="max-width: 720px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px;">
+        <h3>GitHub 访问凭证</h3>
+        {% if github_status.configured %}
+        <span class="badge badge-success" id="token-status">已配置</span>
+        {% else %}
+        <span class="badge badge-failed" id="token-status">未配置</span>
+        {% endif %}
+    </div>
+
+    <form id="github-token-form" onsubmit="saveGithubToken(event)">
+        <div class="form-group">
+            <label for="github-token">GitHub Fine-grained Token</label>
+            <input id="github-token" type="password" autocomplete="new-password"
+                   placeholder="github_pat_..." required minlength="20">
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" type="submit">更新 Token</button>
+        </div>
+    </form>
+
+    <hr style="margin:24px 0;border:none;border-top:1px solid #eee;">
+
+    <div class="form-group">
+        <label for="repository-url">仓库访问测试</label>
+        <input id="repository-url" type="url"
+               value="{{ repository_url }}"
+               placeholder="https://github.com/owner/repository.git">
+    </div>
+    <div class="form-actions">
+        <button class="btn btn-outline" type="button" onclick="testGithubToken(this)">测试访问</button>
+    </div>
+    <div id="github-result" class="status-message" role="status"></div>
+</div>
+
+<script>
+function showGithubResult(message, success) {
+    const result = document.getElementById('github-result');
+    result.textContent = message;
+    result.className = 'status-message ' + (success ? 'success' : 'error');
+}
+
+async function saveGithubToken(event) {
+    event.preventDefault();
+    const tokenInput = document.getElementById('github-token');
+    const response = await fetch('/api/settings/github-token', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({token: tokenInput.value})
+    });
+    const payload = await response.json();
+    if (response.ok) {
+        tokenInput.value = '';
+        document.getElementById('token-status').textContent = '已配置';
+        document.getElementById('token-status').className = 'badge badge-success';
+        showGithubResult(payload.message, true);
+    } else {
+        showGithubResult(payload.detail || 'Token 更新失败。', false);
+    }
+}
+
+async function testGithubToken(button) {
+    const repositoryUrl = document.getElementById('repository-url').value;
+    button.disabled = true;
+    const response = await fetch('/api/settings/github-token/test', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({repository_url: repositoryUrl})
+    });
+    const payload = await response.json();
+    button.disabled = false;
+    showGithubResult(payload.message || payload.detail, response.ok);
+}
+</script>
+{% endblock %}

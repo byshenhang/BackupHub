@@ -10,7 +10,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db.session import Base, engine
-from app.db.models import BackupJob, StorageTarget, ExecutionRecord, AlertChannel  # noqa: F401
+from app.db.models import (  # noqa: F401
+    AlertChannel,
+    AppSetting,
+    BackupJob,
+    ExecutionRecord,
+    StorageTarget,
+)
 
 
 def init_database():

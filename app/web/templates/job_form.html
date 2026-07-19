@@ -1,20 +1,21 @@
 {% extends "base.html" %}
 {% block title %}{{ '编辑' if job else '新建' }}任务 - Backup-Hub{% endblock %}
 {% block content %}
+{% set source_mode = job_config.get('source_mode', 'single' if job_config.get('repository_url') else 'gitlab') %}
 <h2>{{ '编辑' if job else '新建' }}备份任务</h2>
 
 <div class="card" style="max-width: 700px;">
     <form id="job-form" onsubmit="submitForm(event)">
         <div class="form-group">
             <label>任务名称</label>
-            <input type="text" name="name" required placeholder="如：GitLab 生产环境备份"
+            <input type="text" name="name" required placeholder="如：GitHub 私有仓库备份"
                    value="{{ job.name if job else '' }}">
         </div>
 
         <div class="form-group">
             <label>任务类型</label>
             <select name="job_type" required>
-                <option value="git" {{ 'selected' if job and job.job_type.value == 'git' else '' }}>Git/GitLab 仓库备份</option>
+                <option value="git" {{ 'selected' if job and job.job_type.value == 'git' else '' }}>GitHub/通用 Git/GitLab 仓库备份</option>
                 <option value="file" {{ 'selected' if job and job.job_type.value == 'file' else '' }} disabled>文件目录备份（即将支持）</option>
                 <option value="database" {{ 'selected' if job and job.job_type.value == 'database' else '' }} disabled>数据库备份（即将支持）</option>
             </select>
@@ -24,7 +25,6 @@
             <label>调度周期（cron 表达式）</label>
             <input type="text" name="cron_expression" required placeholder="0 2 * * *（每天凌晨 2 点）"
                    value="{{ job.cron_expression if job else '0 2 * * *' }}">
-            <small style="color: #666;">格式：分 时 日 月 周。示例：0 2 * * * = 每天凌晨2点，*/30 * * * * = 每30分钟</small>
         </div>
 
         <div class="form-group">
@@ -57,24 +57,43 @@
         <h3 style="margin-bottom: 16px;">Git 备份配置</h3>
 
         <div class="form-group">
-            <label>GitLab URL（留空则使用环境变量中的默认值）</label>
-            <input type="text" name="gitlab_url" placeholder="https://gitlab.example.com"
-                   id="gitlab_url">
+            <label for="source-mode">备份来源</label>
+            <select id="source-mode" name="source_mode" onchange="toggleSourceMode(this.value)">
+                <option value="single" {{ 'selected' if source_mode == 'single' else '' }}>单个 GitHub / Git 仓库</option>
+                <option value="gitlab" {{ 'selected' if source_mode == 'gitlab' else '' }}>GitLab 全量项目</option>
+            </select>
         </div>
 
-        <div class="form-group">
-            <label>GitLab Token（API 调用需要，留空则使用环境变量默认值）</label>
-            <input type="password" name="gitlab_token" placeholder="glpat-xxxx"
-                   id="gitlab_token">
+        <div id="single-source-section">
+            <div class="form-group">
+                <label for="repository-url">仓库 URL</label>
+                <input type="text" name="repository_url"
+                       placeholder="https://github.com/owner/repository.git"
+                       value="{{ job_config.get('repository_url', '') }}"
+                       id="repository-url">
+            </div>
+        </div>
+
+        <div id="gitlab-source-section">
+            <div class="form-group">
+                <label for="gitlab-url">GitLab URL</label>
+                <input type="text" name="gitlab_url" placeholder="https://gitlab.example.com"
+                       value="{{ job_config.get('gitlab_url', '') }}"
+                       id="gitlab-url">
+            </div>
+            <div class="form-group">
+                <label for="gitlab-token">新 GitLab Token</label>
+                <input type="password" name="gitlab_token" placeholder="glpat-xxxx"
+                       autocomplete="new-password" id="gitlab-token">
+            </div>
         </div>
 
         <div class="form-group">
             <label>克隆认证方式</label>
             <select name="auth_type" onchange="toggleAuthFields(this.value)">
-                <option value="token">HTTP Token（默认）</option>
-                <option value="ssh">SSH Key</option>
+                <option value="token" {{ 'selected' if job_config.get('auth_type', 'token') == 'token' else '' }}>HTTP Token（默认）</option>
+                <option value="ssh" {{ 'selected' if job_config.get('auth_type') == 'ssh' else '' }}>SSH Key</option>
             </select>
-            <small style="color: #666;">Token 模式用 HTTP URL + Token 克隆；SSH 模式用 SSH 私钥克隆</small>
         </div>
 
         <div id="ssh-key-section" style="display: none;">
@@ -82,7 +101,6 @@
                 <label>SSH 私钥</label>
                 <textarea name="ssh_key" rows="8" placeholder="粘贴 SSH 私钥内容（-----BEGIN OPENSSH PRIVATE KEY----- ...）"
                           style="font-family: monospace; font-size: 12px;"></textarea>
-                <small style="color: #666;">私钥将加密存储在数据库中。建议使用专用的部署密钥。</small>
             </div>
         </div>
 
@@ -96,6 +114,11 @@
 <script>
 function toggleAuthFields(type) {
     document.getElementById('ssh-key-section').style.display = type === 'ssh' ? 'block' : 'none';
+}
+
+function toggleSourceMode(mode) {
+    document.getElementById('single-source-section').style.display = mode === 'single' ? 'block' : 'none';
+    document.getElementById('gitlab-source-section').style.display = mode === 'gitlab' ? 'block' : 'none';
 }
 
 async function submitForm(e) {
@@ -114,12 +137,17 @@ async function submitForm(e) {
     };
 
     // Git 配置
-    const gitlabUrl = formData.get('gitlab_url');
-    const gitlabToken = formData.get('gitlab_token');
+    const sourceMode = formData.get('source_mode');
     const authType = formData.get('auth_type');
     const sshKey = formData.get('ssh_key');
-    if (gitlabUrl) data.config.gitlab_url = gitlabUrl;
-    if (gitlabToken) data.config.gitlab_token = gitlabToken;
+    data.config.source_mode = sourceMode;
+    if (sourceMode === 'single') {
+        data.config.repository_url = formData.get('repository_url');
+    } else {
+        data.config.gitlab_url = formData.get('gitlab_url');
+        const gitlabToken = formData.get('gitlab_token');
+        if (gitlabToken) data.config.gitlab_token = gitlabToken;
+    }
     if (authType) data.config.auth_type = authType;
     if (sshKey && authType === 'ssh') data.config.ssh_key = sshKey;
 
@@ -146,5 +174,8 @@ async function submitForm(e) {
         alert('操作失败：' + (err.detail || JSON.stringify(err)));
     }
 }
+
+toggleSourceMode(document.getElementById('source-mode').value);
+toggleAuthFields(document.querySelector('[name="auth_type"]').value);
 </script>
 {% endblock %}

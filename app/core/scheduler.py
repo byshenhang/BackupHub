@@ -12,6 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.jobstores.memory import MemoryJobStore
 
 from app.core.runner import run_backup_job
+from app.config import settings
 
 logger = logging.getLogger("backup-hub.scheduler")
 
@@ -25,9 +26,11 @@ def get_scheduler() -> BackgroundScheduler:
     if _scheduler is None:
         _scheduler = BackgroundScheduler(
             jobstores={"default": MemoryJobStore()},
+            timezone=settings.TIMEZONE,
             job_defaults={
                 "coalesce": True,  # 合并错过的执行
                 "max_instances": 1,  # 同一任务最多一个实例
+                "misfire_grace_time": 3600,
             },
         )
     return _scheduler
@@ -79,6 +82,8 @@ def add_job_to_scheduler(job_id: int, cron_expression: str, job_name: str):
     scheduler = get_scheduler()
     job_id_str = f"backup_job_{job_id}"
 
+    trigger = validate_cron_expression(cron_expression)
+
     # 先移除已有的同名任务（避免重复）
     try:
         scheduler.remove_job(job_id_str)
@@ -86,7 +91,6 @@ def add_job_to_scheduler(job_id: int, cron_expression: str, job_name: str):
         pass
 
     try:
-        trigger = CronTrigger.from_crontab(cron_expression)
         scheduler.add_job(
             run_backup_job,
             trigger=trigger,
@@ -98,6 +102,15 @@ def add_job_to_scheduler(job_id: int, cron_expression: str, job_name: str):
         logger.info(f"任务已添加到调度器：{job_name}（{cron_expression}）")
     except Exception as e:
         logger.error(f"添加任务到调度器失败：{job_name}，错误：{e}")
+        raise
+
+
+def validate_cron_expression(cron_expression: str) -> CronTrigger:
+    """验证五段 cron 表达式并绑定应用时区。"""
+    return CronTrigger.from_crontab(
+        cron_expression,
+        timezone=get_scheduler().timezone,
+    )
 
 
 def remove_job_from_scheduler(job_id: int):

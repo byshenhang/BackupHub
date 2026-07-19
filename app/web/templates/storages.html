@@ -3,84 +3,7 @@
 {% block content %}
 <div class="toolbar">
     <h2>存储目标</h2>
-    <button class="btn btn-primary" onclick="showAddForm()">+ 新增存储目标</button>
-</div>
-
-<!-- 新增表单（默认隐藏） -->
-<div class="card" id="add-form" style="display: none; max-width: 600px;">
-    <h3 style="margin-bottom: 16px;">新增存储目标</h3>
-    <form onsubmit="submitStorage(event)">
-        <div class="form-group">
-            <label>名称</label>
-            <input type="text" name="name" required placeholder="如：阿里云 OSS 生产环境">
-        </div>
-        <div class="form-group">
-            <label>存储类型</label>
-            <select name="storage_type" required onchange="updateConfigFields(this.value)">
-                <option value="local">本地目录</option>
-                <option value="oss">阿里云 OSS</option>
-                <option value="cos" disabled>腾讯云 COS（即将支持）</option>
-                <option value="webdav">WebDAV</option>
-            </select>
-        </div>
-
-        <!-- 本地目录配置 -->
-        <div id="config-local" class="config-section">
-            <div class="form-group">
-                <label>本地目录路径</label>
-                <input type="text" name="local_path" placeholder="/data/backups">
-            </div>
-        </div>
-
-        <!-- OSS 配置 -->
-        <div id="config-oss" class="config-section" style="display: none;">
-            <div class="form-group">
-                <label>Access Key ID</label>
-                <input type="text" name="oss_access_key_id" placeholder="LTAI5t...">
-            </div>
-            <div class="form-group">
-                <label>Access Key Secret</label>
-                <input type="password" name="oss_access_key_secret" placeholder="密钥">
-            </div>
-            <div class="form-group">
-                <label>Endpoint</label>
-                <input type="text" name="oss_endpoint" placeholder="oss-cn-hangzhou.aliyuncs.com">
-            </div>
-            <div class="form-group">
-                <label>Bucket</label>
-                <input type="text" name="oss_bucket" placeholder="my-backup-bucket">
-            </div>
-            <div class="form-group">
-                <label>路径前缀（可选）</label>
-                <input type="text" name="oss_prefix" placeholder="backup-hub/">
-            </div>
-        </div>
-
-        <!-- WebDAV 配置 -->
-        <div id="config-webdav" class="config-section" style="display: none;">
-            <div class="form-group">
-                <label>WebDAV URL</label>
-                <input type="text" name="webdav_url" placeholder="https://dav.jianguoyun.com/dav/">
-            </div>
-            <div class="form-group">
-                <label>用户名</label>
-                <input type="text" name="webdav_username" placeholder="user@example.com">
-            </div>
-            <div class="form-group">
-                <label>密码 / 应用密钥</label>
-                <input type="password" name="webdav_password" placeholder="WebDAV 密码">
-            </div>
-            <div class="form-group">
-                <label>远端路径</label>
-                <input type="text" name="webdav_remote_path" placeholder="/backup-hub/">
-            </div>
-        </div>
-
-        <div style="margin-top: 16px; display: flex; gap: 12px;">
-            <button type="submit" class="btn btn-primary">保存</button>
-            <button type="button" class="btn btn-outline" onclick="hideAddForm()">取消</button>
-        </div>
-    </form>
+    <a class="btn btn-primary" href="/storages/new">新增存储目标</a>
 </div>
 
 <div class="card">
@@ -91,31 +14,32 @@
                 <th>名称</th>
                 <th>类型</th>
                 <th>配置摘要</th>
-                <th>创建时间</th>
+                <th>更新时间</th>
                 <th>操作</th>
             </tr>
         </thead>
         <tbody>
-            {% for s in storages %}
+            {% for storage in storages %}
             <tr>
-                <td><strong>{{ s.name }}</strong></td>
-                <td>{{ s.storage_type.value }}</td>
+                <td><strong>{{ storage.name }}</strong></td>
+                <td>{{ storage.storage_type.value }}</td>
                 <td>
-                    {% if s.storage_type.value == 'local' %}
-                        目录：{{ s.config.get('path', '-') }}
-                    {% elif s.storage_type.value == 'oss' %}
-                        Bucket：{{ s.config.get('bucket', '-') }}
-                    {% elif s.storage_type.value == 'webdav' %}
-                        {{ s.config.get('url', '-') }}
-                    {% else %}
-                        -
+                    {% if storage.storage_type.value == 'local' %}
+                        {{ storage.config.get('path', '-') }}
+                    {% elif storage.storage_type.value == 'oss' %}
+                        {{ storage.config.get('bucket', '-') }}
+                    {% elif storage.storage_type.value == 'webdav' %}
+                        {{ storage.config.get('url', '-') }}
                     {% endif %}
                 </td>
-                <td>{{ s.created_at.strftime('%Y-%m-%d %H:%M') if s.created_at else '-' }}</td>
+                <td>{{ storage.updated_at.strftime('%Y-%m-%d %H:%M') if storage.updated_at else '-' }}</td>
                 <td>
                     <div class="actions">
+                        <button class="btn btn-outline btn-sm" type="button"
+                                onclick="testSavedStorage({{ storage.id }}, this)">测试</button>
+                        <a class="btn btn-outline btn-sm" href="/storages/{{ storage.id }}/edit">编辑</a>
                         <button class="btn btn-danger btn-sm"
-                                hx-delete="/api/storages/{{ s.id }}"
+                                hx-delete="/api/storages/{{ storage.id }}"
                                 hx-confirm="确认删除此存储目标？"
                                 hx-swap="none"
                                 hx-on::after-request="if(event.detail.successful) location.reload()">
@@ -128,60 +52,20 @@
         </tbody>
     </table>
     {% else %}
-    <div class="empty">
-        <p>暂无存储目标</p>
-        <p style="margin-top: 8px; font-size: 14px;">添加存储目标后，备份任务可以将产物上传到云端。</p>
-    </div>
+    <div class="empty">暂无存储目标</div>
     {% endif %}
 </div>
+<div id="storage-result" class="status-message" role="status"></div>
 
 <script>
-function showAddForm() {
-    document.getElementById('add-form').style.display = 'block';
-}
-function hideAddForm() {
-    document.getElementById('add-form').style.display = 'none';
-}
-function updateConfigFields(type) {
-    document.querySelectorAll('.config-section').forEach(el => el.style.display = 'none');
-    const section = document.getElementById('config-' + type);
-    if (section) section.style.display = 'block';
-}
-
-async function submitStorage(e) {
-    e.preventDefault();
-    const form = e.target;
-    const fd = new FormData(form);
-    const type = fd.get('storage_type');
-
-    let config = {};
-    if (type === 'local') {
-        config.path = fd.get('local_path');
-    } else if (type === 'oss') {
-        config.access_key_id = fd.get('oss_access_key_id');
-        config.access_key_secret = fd.get('oss_access_key_secret');
-        config.endpoint = fd.get('oss_endpoint');
-        config.bucket = fd.get('oss_bucket');
-        config.prefix = fd.get('oss_prefix') || 'backup-hub/';
-    } else if (type === 'webdav') {
-        config.url = fd.get('webdav_url');
-        config.username = fd.get('webdav_username');
-        config.password = fd.get('webdav_password');
-        config.remote_path = fd.get('webdav_remote_path') || '/backup-hub/';
-    }
-
-    const resp = await fetch('/api/storages', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ name: fd.get('name'), storage_type: type, config })
-    });
-
-    if (resp.ok) {
-        location.reload();
-    } else {
-        const err = await resp.json();
-        alert('创建失败：' + (err.detail || JSON.stringify(err)));
-    }
+async function testSavedStorage(storageId, button) {
+    button.disabled = true;
+    const response = await fetch(`/api/storages/${storageId}/test`, {method: 'POST'});
+    const payload = await response.json();
+    button.disabled = false;
+    const result = document.getElementById('storage-result');
+    result.textContent = payload.message || payload.detail;
+    result.className = 'status-message ' + (response.ok ? 'success' : 'error');
 }
 </script>
 {% endblock %}

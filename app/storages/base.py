@@ -65,3 +65,7 @@ class BaseStorage(ABC):
     def storage_type(self) -> str:
         """返回存储类型标识，与 StorageType 枚举值对应。"""
         ...
+
+    def test_connection(self, config: dict) -> None:
+        """验证存储配置；失败时抛出异常。"""
+        raise NotImplementedError(f"{self.storage_type} 暂不支持连接测试。")

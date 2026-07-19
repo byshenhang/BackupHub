@@ -10,20 +10,54 @@
 
 import json
 import logging
+import re
+import shutil
+import subprocess
 import tempfile
+import threading
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.core.app_settings import get_github_token
 from app.core.crypto import decrypt
 from app.db.models import BackupJob, ExecutionRecord, RunStatus, TriggerSource, StorageTarget
 from app.executors.registry import get_executor
 from app.storages.registry import get_storage
 
 logger = logging.getLogger("backup-hub.runner")
+_job_locks: dict[int, threading.Lock] = {}
+_job_locks_guard = threading.Lock()
+
+
+def _redact_sensitive_text(value: str) -> str:
+    value = re.sub(r"(?i)(https?://)[^/@\s]+@", r"\1***@", value)
+    return re.sub(
+        r"(?i)(github_pat_|gh[pousr]_|glpat-)[A-Za-z0-9_-]+",
+        r"\1***",
+        value,
+    )
+
+
+def _exception_summary(error: Exception) -> str:
+    message = str(error)
+    if isinstance(error, subprocess.CalledProcessError):
+        command_output = (error.stderr or error.stdout or "").strip()
+        if command_output:
+            message = f"{message}\n{command_output[-4000:]}"
+    return _redact_sensitive_text(message)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _get_job_lock(job_id: int) -> threading.Lock:
+    with _job_locks_guard:
+        return _job_locks.setdefault(job_id, threading.Lock())
 
 
 def run_backup_job(job_id: int, trigger_source: str = "scheduled"):
@@ -35,12 +69,21 @@ def run_backup_job(job_id: int, trigger_source: str = "scheduled"):
     """
     from app.db.session import SessionLocal
 
+    job_lock = _get_job_lock(job_id)
+    if not job_lock.acquire(blocking=False):
+        logger.warning(f"任务 {job_id} 已在当前进程执行，跳过本次触发。")
+        return None
+
     db = SessionLocal()
     record = None
+    record_id = None
+    work_dir = None
+    keep_local_artifact = False
+    log_buffer = []
 
     try:
         # 获取任务
-        job = db.query(BackupJob).get(job_id)
+        job = db.get(BackupJob, job_id)
         if not job:
             logger.error(f"任务 {job_id} 不存在。")
             return
@@ -59,19 +102,21 @@ def run_backup_job(job_id: int, trigger_source: str = "scheduled"):
             job_id=job_id,
             status=RunStatus.RUNNING,
             trigger_source=TriggerSource(trigger_source),
-            started_at=datetime.utcnow(),
+            started_at=_utcnow(),
         )
         db.add(record)
         db.commit()
         db.refresh(record)
+        record_id = record.id
 
-        log_buffer = []
         log_buffer.append(f"=== 备份任务开始：{job.name} ===")
         log_buffer.append(f"触发方式：{trigger_source}")
         log_buffer.append(f"开始时间：{record.started_at}")
 
         # 2. 解析任务配置
         job_config = json.loads(job.config) if job.config else {}
+        if job_config.get("repository_url"):
+            job_config["_github_token"] = get_github_token(db)
 
         # 3. 执行备份
         log_buffer.append(f"任务类型：{job.job_type}")
@@ -87,7 +132,7 @@ def run_backup_job(job_id: int, trigger_source: str = "scheduled"):
         # 4. 上传到存储目标
         remote_path = ""
         if job.storage_target:
-            storage_target = db.query(StorageTarget).get(job.storage_target_id)
+            storage_target = db.get(StorageTarget, job.storage_target_id)
             if storage_target:
                 storage_config = json.loads(decrypt(storage_target.config))
                 storage = get_storage(storage_target.storage_type.value)
@@ -98,14 +143,16 @@ def run_backup_job(job_id: int, trigger_source: str = "scheduled"):
             else:
                 log_buffer.append("警告：关联的存储目标不存在，跳过上传。")
         else:
-            log_buffer.append("未配置存储目标，产物仅保留在本地。")
+            remote_path = str(artifact_path)
+            keep_local_artifact = True
+            log_buffer.append(f"未配置存储目标，产物保留在本地：{remote_path}")
 
         # 5. 保留策略清理
         if job.storage_target and remote_path:
             _cleanup_old_backups(db, job, log_buffer)
 
         # 6. 更新执行记录
-        finished_at = datetime.utcnow()
+        finished_at = _utcnow()
         duration = int((finished_at - record.started_at).total_seconds())
 
         record.status = RunStatus.SUCCESS
@@ -119,19 +166,28 @@ def run_backup_job(job_id: int, trigger_source: str = "scheduled"):
         logger.info(f"任务 {job.name} 执行成功，耗时 {duration} 秒。")
 
     except Exception as e:
-        error_msg = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+        error_summary = _exception_summary(e)
+        error_msg = (
+            f"{type(e).__name__}: {error_summary}\n"
+            f"{_redact_sensitive_text(traceback.format_exc())}"
+        )
         logger.error(f"任务执行失败：{error_msg}")
 
         if record:
             record.status = RunStatus.FAILED
-            record.finished_at = datetime.utcnow()
+            record.finished_at = _utcnow()
             record.duration_seconds = int((record.finished_at - record.started_at).total_seconds())
-            record.error_message = str(e)
-            record.log = (record.log or "") + f"\n\n错误：{error_msg}"
+            record.error_message = error_summary
+            record.log = "\n".join(log_buffer + ["", f"错误：{error_msg}"])
             db.commit()
 
     finally:
+        if work_dir is not None and not keep_local_artifact:
+            shutil.rmtree(work_dir, ignore_errors=True)
         db.close()
+        job_lock.release()
+
+    return record_id
 
 
 def _cleanup_old_backups(db: Session, job: BackupJob, log_buffer: list):
@@ -142,7 +198,7 @@ def _cleanup_old_backups(db: Session, job: BackupJob, log_buffer: list):
     if not job.retention_days or job.retention_days <= 0:
         return
 
-    cutoff = datetime.utcnow() - timedelta(days=job.retention_days)
+    cutoff = _utcnow() - timedelta(days=job.retention_days)
 
     # 查找过期的成功执行记录
     expired_records = db.query(ExecutionRecord).filter(
@@ -158,7 +214,7 @@ def _cleanup_old_backups(db: Session, job: BackupJob, log_buffer: list):
         return
 
     # 获取存储上传器
-    storage_target = db.query(StorageTarget).get(job.storage_target_id)
+    storage_target = db.get(StorageTarget, job.storage_target_id)
     if not storage_target:
         return
 

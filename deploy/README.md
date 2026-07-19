@@ -37,7 +37,7 @@ vim .env
 ```ini
 LOGIN_PASSWORD=your-secure-password
 SECRET_KEY=<生成的 Fernet 密钥>
-GITLAB_URL=https://gitlab.example.com
+# GitLab URL 在 Web 管理后台按任务配置
 GITLAB_TOKEN=glpat-xxxx
 ```
 

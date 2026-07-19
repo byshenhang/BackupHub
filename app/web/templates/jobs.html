@@ -31,7 +31,8 @@
                         <input type="checkbox" {% if job.enabled %}checked{% endif %}
                                hx-patch="/api/jobs/{{ job.id }}/toggle"
                                hx-swap="none"
-                               hx-confirm="确认{{ '停用' if job.enabled else '启用' }}此任务？">
+                               hx-confirm="确认{{ '停用' if job.enabled else '启用' }}此任务？"
+                               hx-on::after-request="if(event.detail.successful) location.reload()">
                         <span class="slider"></span>
                     </label>
                 </td>
@@ -49,14 +50,15 @@
                         <span style="color:#999;">未执行过</span>
                     {% endif %}
                 </td>
-                <td>-</td>
+                <td>
+                    {% if next_runs.get(job.id) %}
+                    {{ next_runs[job.id].strftime('%Y-%m-%d %H:%M') }}
+                    {% else %}-{% endif %}
+                </td>
                 <td>
                     <div class="actions">
-                        <button class="btn btn-success btn-sm"
-                                hx-post="/api/jobs/{{ job.id }}/run"
-                                hx-swap="none"
-                                hx-confirm="确认立即执行此任务？"
-                                hx-on::after-request="if(event.detail.successful) alert('已触发执行')">
+                        <button class="btn btn-success btn-sm" type="button"
+                                onclick="runJob({{ job.id }}, this)">
                             ▶ 执行
                         </button>
                         <a href="/jobs/{{ job.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
@@ -80,4 +82,19 @@
     </div>
     {% endif %}
 </div>
+<script>
+async function runJob(jobId, button) {
+    button.disabled = true;
+    button.textContent = '已触发';
+    const response = await fetch(`/api/jobs/${jobId}/run`, {method: 'POST'});
+    const payload = await response.json();
+    if (response.ok) {
+        window.location.href = '/runs';
+    } else {
+        button.disabled = false;
+        button.textContent = '▶ 执行';
+        alert(payload.detail || '触发失败。');
+    }
+}
+</script>
 {% endblock %}

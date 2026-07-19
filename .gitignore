@@ -19,6 +19,7 @@ env/
 # 运行时数据
 data/*.db
 data/repos/
+data/temp/
 logs/
 
 # IDE
